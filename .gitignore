@@ -130,3 +130,6 @@ dmypy.json
 *.bin
 datasets/
 models/
+.idea/
+results/
+logs/

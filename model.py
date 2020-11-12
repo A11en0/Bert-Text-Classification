@@ -3,29 +3,35 @@ from torch import nn
 import transformers as ppb
 from torch.autograd import Variable
 from transformers import DistilBertModel
-# from pytorch_pretrained_bert import BertModel
-# from model import CRF
 
-# self.model_class, self.tokenizer_class, self.pretrained_weights = (
-#     ppb.DistilBertModel, ppb.DistilBertTokenizer, 'distilbert-base-uncased')
+class BiLSTM(nn.Module):
+    def __init__(self, embedding_dim, hidden_dim, dropout=0.5, output_size=2):
+        super(BiLSTM, self).__init__()
+        self.embedding_dim = embedding_dim
+        self.hidden_dim = hidden_dim
+        # self.num_layers = num_layers
+        self.dropout = dropout
 
-# w2v_path = os.path.join(path_prefix, 'w2v_tweet.model')  # 處理word to vec model的路徑
-# w2v_path = os.path.join(path_prefix, 'GoogleNews-vectors-negative300.bin') # 處理word to vec model的路徑
+        self.lstm = nn.LSTM(input_size=embedding_dim, hidden_size=hidden_dim, bidirectional=True)
+        self.W = nn.Linear(hidden_dim * 2, embedding_dim, bias=False)
+        self.b = nn.Parameter(torch.ones([embedding_dim]))
+
+    def forward(self, X):
+        input = X.transpose(0, 1)  # input : [n_step, batch_size, n_class]
+
+        hidden_state = torch.zeros(1*2, len(X), self.hidden_dim)   # [num_layers(=1) * num_directions(=2), batch_size, n_hidden]
+        cell_state = torch.zeros(1*2, len(X), self.hidden_dim)     # [num_layers(=1) * num_directions(=2), batch_size, n_hidden]
+
+        outputs, (_, _) = self.lstm(input, (hidden_state, cell_state))
+        outputs = outputs[-1]  # [batch_size, n_hidden]
+        model = self.W(outputs) + self.b  # model : [batch_size, n_class]
+        return model
+
 class LSTM_Net(nn.Module):
     def __init__(self, embedding, embedding_dim, hidden_dim, num_layers, dropout=0.5,
-                 fix_embedding=True, embedding_pretrained_path="./tweets-original/GoogleNews-vectors-negative300.bin"):
+                 fix_embedding=True):
 
         super(LSTM_Net, self).__init__()
-        # embedding layer
-        # if embedding_pretrained_path is not None:
-        #     embedding_pretrained = torch.tensor(
-        #         np.load(dataset + '/data/' + embedding)["embeddings"].astype('float32')) \
-        #         if embedding != 'random' else None  # 预训练词向量
-        #
-        #     self.embedding = nn.Embedding.from_pretrained(embedding_pretrained, freeze=False)
-        # else:
-        #     self.embedding = nn.Embedding(n_vocab, embed, padding_idx=n_vocab - 1)
-
         self.embedding = torch.nn.Embedding(embedding.size(0),embedding.size(1))
         self.embedding.weight = torch.nn.Parameter(embedding)
         # 是否将 embedding fix住，如果fix_embedding为False，在训练过程中，embedding也会跟着被训练

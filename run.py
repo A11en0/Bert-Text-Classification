@@ -1,113 +1,22 @@
 from torch.utils.data import TensorDataset
 from torch.utils.data import DataLoader
-from model import LSTM_Net, Bert_Net
-from train_eval import training, eval_model
+from model import LSTM_Net, Bert_Net, BiLSTM
 from utils import *
-import os
-import torch
-import argparse
-import numpy as np
-from torch import nn
 # from sklearn.model_selection import train_test_split
 from utils import train_dev_split, train_test_split
-
-# def old_main():
-#     path_prefix = './tweets-original/'
-#     labels, texts = [], []
-#     print("--- Loading Data ---")
-#     # 加载所有数据集，并做拼接
-#     x1, y1 = load_data(path_prefix+"chelsea-raw.txt", "chelsea", 7)
-#     x2, y2 = load_data(path_prefix+"obama-raw.txt", "obama", 6)
-#     x3, y3 = load_data(path_prefix+"smartphone-raw.txt", "smartphone", 7)
-#     x4, y4 = load_data(path_prefix+"blackfriday-raw.txt", "blackfriday", 7)
-#     x5, y5 = load_data(path_prefix+"arsenal-raw.txt", "arsenal", 7)
-#     texts+=x1+x2+x3+x4+x5
-#     labels+=y1+y2+y3+y4+y5
-#     # 使用labels, texts创建一个DataFrame保存数据
-#     textDF = pd.DataFrame()
-#     textDF['text'] = texts
-#     textDF['name'] = labels
-#
-#     labels_set = list(set(textDF.name))
-#     for label in labels_set:
-#         print(label, textDF[textDF.name == label].text.count())
-#
-#     textDF['label'] = textDF['name'].apply(lambda x: labels_set.index(x))
-#     data_for_use = pd.DataFrame()
-#     for label in labels_set:
-#         data_for_use = data_for_use.\
-#             append(textDF[textDF.name == label].sample(10000, replace=False))
-#     data_for_use.dropna(axis=0, how='any', inplace=True)
-#
-#     # GPU for CUDA computing
-#     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-#     # w2v_path = os.path.join(path_prefix, 'w2v_tweet.model')  # 處理word to vec model的路徑
-#     # w2v_path = os.path.join(path_prefix, 'GoogleNews-vectors-negative300.bin') # 處理word to vec model的路徑
-#
-#     sen_len = 30
-#     fix_embedding = True  # fix embedding during training
-#     batch_size = 128
-#     epoch = 50
-#     lr = 0.0002
-#     train_mode = True
-#
-#     # model_dir = os.path.join(path_prefix, 'model/') # model directory for checkpoint model
-#     model_dir = path_prefix  # model directory for checkpoint model
-#
-#     # print("loading data ...")  # 把'training_label.txt'跟'training_nolabel.txt'讀進來
-#     # train_x, y = load_training_data("")
-#     # train_x_no_label = load_training_data(train_no_label)
-#
-#     X_train, y_train = data_for_use.text, data_for_use.label
-#     print("X_train shape: ", X_train.shape)
-#     # preprocess = Preprocess(X_train, sen_len, w2v_path=w2v_path)
-#
-#     preprocess = Preprocess(X_train)
-#     # embedding = preprocess.make_embedding(load=True)
-#     input_ids, attention_mask = preprocess.sentence_word2idx()
-#     y = preprocess.labels_to_tensor(y_train)
-#
-#     # 把data分成training data和validation data
-#     X_train, X_test, y_train, y_test = train_test_split(input_ids, y, test_size = 0.33, random_state = 42) # X_train: (335, 768) X_test: (165, 768)
-#
-#     # 把data做成dataset供dataloader使用
-#     train_dataset = TwitterDataset(X=X_train, y=y_train)
-#     val_dataset = TwitterDataset(X=X_test, y=y_test)
-#
-#     # 把 data 转成 batch of tensors
-#     train_loader = torch.utils.data.DataLoader(dataset=train_dataset,
-#                                                batch_size=batch_size,
-#                                                shuffle=True,
-#                                                num_workers=8)
-#     val_loader = torch.utils.data.DataLoader(dataset=val_dataset,
-#                                              batch_size=batch_size,
-#                                              shuffle=False,
-#                                              num_workers=8)
-#
-#     if train_mode:
-#         print("--- Start Training --- ")
-#         model = Bert_Net(embedding_dim=768, hidden_dim=300, num_layers=4, dropout=0.5)
-#
-#         # model = LSTM_Net(embedding, embedding_dim=250, hidden_dim=300, num_layers=4, dropout=0.5,
-#         #                  fix_embedding=fix_embedding)
-#         model = model.to(device)  # device為"cuda"，GPU
-#         training(batch_size, epoch, lr, model_dir, train_loader, val_loader, model, device)
-#
-#     else:
-#         model = torch.load("./tweets-original/ckpt.model")
-#         model = model.to(device)  # device為"cuda"，GPU
-#         test_loss, acc, p, r, f1 = eval_model(model, device, val_loader)
-#         print('Test Loss:%.4f, Test Acc:%.4f, Test P:%.4f, Test R:%.4f, Test F1:%.4f' % (test_loss, acc, p, r, f1))
-#
-#     print(model)
+from train_eval import *
+from torch.utils.tensorboard import SummaryWriter
+writer = SummaryWriter("logs/SST-1")
 
 def main():
     dataset = "sst-2"
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     batch_size = 48
-    epoch = 50
-    lr = 1e-5
-    train_mode = False
+    epochs = 50
+    lr = 2e-6
+    # load_model = "results/36_Model_0.746031746031746.pt"
+    load_model = ""
+
     model_dir = "./models"  # model directory for checkpoint model
 
     # np.random.seed(1)
@@ -135,16 +44,54 @@ def main():
     train_data, test_data = train_test_split(train_loader, 0.8)
     train_data, dev_data = train_dev_split(train_data, 0.8)
 
-    model = Bert_Net(embedding_dim=768, hidden_dim=300, num_layers=4, dropout=0.5)
+    # model = Bert_Net(embedding_dim=768, hidden_dim=300, num_layers=4, dropout=0.5)
+    model = BiLSTM(embedding_dim=768, hidden_dim=300)
+    # model1 = LSTM_Net(embedding, embedding_dim=768, hidden_dim=300, num_layers=2, dropout=0.5,
+    #              fix_embedding=True, embedding_pretrained_path="models/model.pt")
+
     model = model.to(device)  # device為"cuda"，GPU
 
-    if train_mode:
-        print("--- Start Training --- ")
-        training(batch_size, epoch, lr, model_dir, train_data, dev_data, model, device)
-    else:
-        print("--- Start Testing --- ")
-        model.load_state_dict(torch.load("./models/model.pt"))
-        eval_model(model, batch_size, test_data, device)
+    # if train_mode:
+    #     print("--- Start Training --- ")
+    #     training(batch_size, epoch, lr, model_dir, train_data, dev_data, model, device)
+    # else:
+    #     print("--- Start Testing --- ")
+    #     model.load_state_dict(torch.load("./models/model.pt"))
+    #     eval_model(model, batch_size, test_data, device)
 
+    # train(batch_size, epoch, lr, model_dir, train_data, dev_data, model, device)
+
+    if load_model:
+        model.load_state_dict(torch.load(load_model))
+        test_loss, acc, p, r, f1 = eval_model(model, test_data, batch_size, device)
+        print('Test Loss:%.4f, Test Acc:%.4f, Test P:%.4f, Test R:%.4f, Test F1:%.4f' % (test_loss, acc, p, r, f1))
+        return
+
+    best_score = 0.0
+    test_loss, test_acc, test_p, test_r, test_f1 = 0, 0, 0, 0, 0
+
+    for epoch in range(epochs):
+        train_loss, eval_loss, acc, p, r, f1 = train_model(model, train_data, dev_data, batch_size, epoch, lr, device)
+        print('Epoch:%d, Training Loss:%.4f' % (epoch, train_loss))
+        print('Epoch:%d, Eval Loss:%.4f, Eval Acc:%.4f, Eval P:%.4f, Eval R:%.4f, Eval F1:%.4f' % (epoch, eval_loss,
+                    acc, p, r, f1))
+
+        if f1 > best_score:
+            best_score = f1
+            torch.save(model.state_dict(), 'results/%d_%s_%s.pt' % (epoch, 'Model', str(best_score)))
+            test_loss, test_acc, test_p, test_r, test_f1 = eval_model(model, test_data, batch_size, device)
+
+        print('Test Loss:%.4f, Test Acc:%.4f, Test P:%.4f, Test R:%.4f, Test F1:%.4f\n'
+              % (test_loss, test_acc, test_p, test_r, test_f1))
+
+        writer.add_scalar("Loss/train", train_loss, epoch)
+        writer.add_scalar("Loss/eval", eval_loss, epoch)
+        writer.add_scalar("Loss/test", test_loss, epoch)
+
+        writer.add_scalar('Accuracy/eval', acc, epoch)
+        writer.add_scalar('Accuracy/test', test_acc, epoch)
+        writer.flush()
+
+    writer.close()
 if __name__ == '__main__':
     main()
